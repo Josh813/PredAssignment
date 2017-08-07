@@ -1,0 +1,96 @@
+---
+title: "Practical Machine Learning - Assignment"
+author: "by Josh Toh"
+output: html_document
+---
+
+```{r setup, include=FALSE, cache=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+<br>
+
+### Synopsis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. In this report, **I aim to predict the manner of exercise** that were taken by individuals in 20 test cases **based on various measured physical parameters**. To do so, I conduct exploratory analysis on a training data set, select the most appropriate variables and create a prediction model of highest accuracy obtained while working on the testing dataset.
+
+<--! You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. -->  
+<br>
+
+### The dataset
+This human activity recognition data set is obtained from an experiment conducted on 6 participants. The data were retrieved from accelerometers on the belt, forearm, arm, and dumbell of these participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website [here](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har). (See the section on the Weight Lifting Exercise Dataset).  
+<br>
+The training and test data were retrieved respectively from [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) and [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv).  
+<br>
+*Reference:
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. "Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13)". Stuttgart, Germany: ACM SIGCHI, 2013.*  
+<br>
+
+### Downloading and cleaning data
+```{r}
+library(caret)
+
+# 1.Downloading the data
+UrlTrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+UrlTest  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(UrlTrain))
+testing  <- read.csv(url(UrlTest))
+
+# 2.Removing non-predictor variables (column 1-5)
+training <- training[,-(1:5)]
+testing <- testing[,-(1:5)]
+
+# 3.Removing variables with near zero variances
+NZV <- nearZeroVar(training)
+training <- training[,-NZV]
+testing <- testing[,-NZV]
+
+# 4.Removing variables with more than 95% NA values
+isNA <- which((apply(is.na(testing), 2, mean) > 0.95) == TRUE)
+training <- training[,-isNA]
+testing <- testing[,-isNA]
+
+dim(training); dim(testing)
+```
+The resulting datasets each contains 54 variables which was reduced from an initial list of 160.
+
+### Spliting the data
+
+I first partitioned the training dataset further into two in the ratio 70:30 to create a myTrain set for model building and a myTest set for validating the model. The previously downloaded testing dataset is unchanged and will only be used to generate results to the quiz.
+
+```{r}
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+myTrain <- training[inTrain, ]
+myTest  <- training[-inTrain, ]
+dim(myTrain); dim(myTest)
+```
+
+### Exploring the data
+
+I was first curious to know about the correlation between the 53 predictors in order to ascertain if a principle component analysis is required to summarize them.  
+```{r fig.height=6}
+library(corrplot)
+corrplot(cor(myTrain[, -54]), method = "color", tl.cex = 0.6)
+M <- abs(cor(myTrain[, -54]))
+diag(M) <- 0
+sum (M>0.8, arr.ind = TRUE) / (53^2 -53)
+```
+It appears that only 1% of predictors are highly correlated to each other. This suggests that preprocessing through pca may not be necessary.
+
+### Building the prediction model
+
+```{r}
+library(randomForest)
+set.seed(33833)
+controlRF <- trainControl(method="cv", number=3)
+ModFitRF <- train(classe ~ ., data=myTrain, method="rf", trControl=controlRF)
+ModFitRF$finalModel
+predictRF <- predict(ModFitRF, newdata=myTest)
+confusionMatrix(predictRF, myTest$classe)
+```
+This model yields a pretty high accuracy of 99.8% with an error rate of 0.26%.
+
+### Applying model to testing dataset
+The Random Forest model was applied to predict the 20 quiz results from the testing dataset as shown below.
+```{r}
+predict(ModFitRF, newdata=testing)
+```
